@@ -2,11 +2,14 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NZWalksApi.Data;
 using NZWalksApi.Mappings;
+using NZWalksApi.Middlewares;
 using NZWalksApi.Repositories;
+using Serilog;
 using System.Text;
 
 namespace NZWalksApi
@@ -18,8 +21,14 @@ namespace NZWalksApi
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-
+            var logger = new LoggerConfiguration()
+                .WriteTo.Console().WriteTo.File("Logs/NzWalks_Log.txt", rollingInterval: RollingInterval.Day)
+                .MinimumLevel.Information()
+                .CreateLogger();
+            builder.Logging.ClearProviders();
+            builder.Logging.AddSerilog(logger);
             builder.Services.AddControllers();
+            builder.Services.AddHttpContextAccessor();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(options =>
@@ -61,6 +70,7 @@ namespace NZWalksApi
             builder.Services.AddScoped<IRegionRepository, SQLRegionRepository>();
             builder.Services.AddScoped<IWalkRepository, SQLWalkRepository>();
             builder.Services.AddScoped<ITokenRepository, TokenRepository>();
+            builder.Services.AddScoped<IImageRepository, LocalImageRepository>();
 
             builder.Services.AddAutoMapper(typeof(AutoMapperProfiles));
             builder.Services.AddIdentityCore<IdentityUser>()
@@ -97,13 +107,18 @@ namespace NZWalksApi
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
-
+            app.UseMiddleware<ExceptionHandlerMiddleware>();
             app.UseHttpsRedirection();
 
             app.UseAuthentication();
             app.UseAuthorization();
 
-
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), "Images")),
+                RequestPath = "/Images"
+                // https://localhost:1234/Images
+            });
             app.MapControllers();
 
             app.Run();
